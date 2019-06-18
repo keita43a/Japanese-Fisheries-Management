@@ -1,6 +1,6 @@
 ---
 title: 'Fisheries Managment: Japan and Norway'
-subtitle: "<html><div style='float:left'></div><hr color='#EB811B' size=1px width=796px></html>"
+subtitle: "<html><div style='float:left'></div><hr color='#00BFFF' size=1px width=796px></html>"
 author: "Keita Abe"
 date: "2019/6/7"
 output: 
@@ -25,43 +25,341 @@ opts_chunk$set(
   cache=T#, echo=F, warning=F, message=F
   )
 library(tidyverse)
-library(hrbrthemes)
+library(estatapi)
+library(gghighlight)
+#library(hrbrthemes)
 ```
 
 # Table of contents
 
-1. [The Fisheries](#fisheries)
+1. [Introduction](#intro)
 
-2. [Brief Hisotry](#history)
+2. [The Fisheries](#fisheries)
 
-3. [FRA](#fra)
+3. [Key Categolization](#category)
 
-4. [MPA](#mpa)
+4. [Brief Hisotry](#history)
 
-5. [Fisheries Policy Reform] (#reform)
+5. [Management](#management)
+
+6. [Case Studies](#cases)
+
+7. [Comparison of framework](#comparison)
+
+8. [ITQs for Japanese Fisheries](#itq)
 
 
+---
+class: inverse, center, middle
+name: prologue
 
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+# Introduction
+
+<html><div style='float:left'></div><hr color='#00BFFF' size=1px width=796px></html>
+
+
+---
+
+# Fisheries Catch 
+
+catch and value?
+
+fishers and fisheries has been declining.
+It is mainly because technological progress.
+
+
+```{r estat, echo = FALSE}
+
+appID <- "11217753824fd6ecf1d5cc2880b613e3ee724fdb"
+## estat_getStatsList(appId = appID, searchWord = "海面漁業生産統計調査")
+
+# data: 1979-2002
+dat.annual1 = estat_getStatsData(
+  appId = appID, 
+  statsDataId = "0003229517"
+)
+
+# data from 2003-2012
+dat.annual2= estat_getStatsData(
+  appId = appID, 
+  statsDataId = "0003229518"
+)
+
+# combine annual data.
+dat.annual = bind_rows(dat.annual1,dat.annual2)
+
+# data by species 0003238631
+dat.species= estat_getStatsData(
+  appId = appID, 
+  statsDataId = "0003238631"
+)
+
+
 ```
 
-## R Markdown
 
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+---
+class: inverse, center, middle
+name: fisheries
 
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+# The Fisheries
 
-```{r cars}
-summary(cars)
+<html><div style='float:left'></div><hr color='#00BFFF' size=1px width=796px></html>
+
+---
+
+# Nature conditions 
+
+```{r natural, echo = FALSE}
+
+ if(FALSE){
+   # OECD dummy and location of the capital data (compiled by hand)
+   dat.oecd = read_csv("./data/oecd.csv") %>%
+     mutate(capital_lat_NS = str_extract(Capital_lat,".$"),
+                  capital_lon_EW = str_extract(capital_lon,".$"),
+                  capital_lat = as.numeric(str_replace(Capital_lat,capital_lat_NS,"")),
+                  capital_lon = as.numeric(str_replace(capital_lon,capital_lon_EW,""))) %>%
+     mutate(OECD = ifelse(is.na(OECD),0,OECD)) %>%
+     dplyr::select(Country,OECD,capital,capital_lat,capital_lat_NS,
+                   capital_lon,capital_lon_EW)
+   
+   write_csv(dat.oecd, "./data/oecd2_capital_location.csv")
+ }
+
+dat.oecd = read_csv("./data/oecd2_capital_location.csv")
+
+# Data is obtained from FishStatJ
+dat.fao_catch = read_csv("./data/FishStat_world_catch_2010_2017.csv") %>%
+           tidyr::gather(key = "year",value = "catch",-c(1:4)) %>%
+           mutate(catch = ifelse(catch == "...",NA,
+                                 ifelse(catch == "-",0,catch))) %>%
+           mutate(catch = str_replace_all(catch," ",""),
+                  catch = str_replace_all(catch,"F","")) %>%
+           filter(`Unit (Unit)` != "Number") %>% # most of species with number is marine mammal (seal, whale, etc) 
+           mutate_at(vars(year,catch),list(~ as.numeric(.)))
+           # calculate the diversity measure (Shannon)
+
+# make dataframe for lat x diversity by country (2010-2017 average)
+dat.fao1 = dat.fao_catch %>%
+           group_by(`Country (Country)`,`Species (ASFIS species)`) %>%
+             summarise(catch = mean(catch,na.rm = TRUE)) %>%
+           ungroup() %>%
+           group_by(`Country (Country)`) %>%
+             mutate(share = catch/sum(catch,na.rm = TRUE)) %>%
+           ungroup() %>%
+           mutate(log_share = ifelse(share == 0,0,log(share))) %>%
+           filter(!is.nan(catch)) %>%
+           mutate(share_log_share = share*log_share) %>%
+           group_by(`Country (Country)`) %>%
+             summarise(shannon = -1*sum(share_log_share,na.rm = TRUE)) %>%
+           ungroup() %>%
+           # merge OECD and capital location data
+           left_join(dat.oecd,by = c("Country (Country)" = "Country")) %>%
+           # only OECD countries
+           filter(OECD == 1) %>%
+           # remove shannon = 0 
+           filter(shannon != 0)
+
+           
+
+ggplot(dat.fao1,aes(x = shannon,y = capital_lat)) + 
+  geom_point() +
+  # geom_smooth(method = "lm", se = FALSE) + 
+  geom_text(aes(label=`Country (Country)`),hjust=-0.1, vjust=0, size = 3) + 
+  gghighlight(label_key = `Country (Country)`, 
+                  `Country (Country)` == "Norway" | `Country (Country)` == "Japan") +
+theme_bw() + 
+  labs(x = "Diversity index of catch, 2010-2017 Mean",
+       y = "Latitude of capital city")
+  
+
 ```
 
-## Including Plots
 
-You can also embed plots, for example:
+---
 
-```{r pressure, echo=FALSE}
-plot(pressure)
+# Social conditions
+
+
+```{r socialcondition,echo = FALSE}
+dat.fao_catch_rank = dat.fao_catch %>%
+                     group_by(`Country (Country)`,year) %>%
+                       summarise(catch = sum(catch,na.rm = TRUE)) %>%
+                     ungroup() %>%
+                     filter(year == 2013) %>%
+                     mutate(catch_rank = min_rank(desc(catch)),
+                            rank40_d = ifelse(catch_rank <= 40,1,0))
+
+dat.oecd2 = read_csv("./data/oecd.csv") %>%
+           left_join(dat.fao_catch_rank,by = c("Country" = "Country (Country)"))
+
+dat.fao2 = read_csv("./data/FAOSTAT_food_balanc_sheet.csv") %>%
+           dplyr::select(-`Item Code`) %>%
+           tidyr::spread(key = "Item",value = "Value") %>%
+           left_join(dat.oecd %>% dplyr::select(Country,OECD, rank40_d), by = "Country") %>%
+           # top 40 catching country + OECD
+           filter(OECD == 1 | rank40_d == 1) %>%
+           # for now, pick 2013. Can be changed among 2009-2013.
+           filter(Year == 2013) %>%
+           mutate(fish_rate = `Fish, Seafood`/`Animal Products`*100)
+
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+
+---
+
+# How to characterize Japanese fisheries?
+
+
+
+---
+class: inverse, center, middle
+name: category
+
+# Key categolization
+
+
+
+
+---
+
+# Main categolization of Japanese fisheries
+
+
+---
+
+# Coastal Fisheries
+
+
+---
+
+# Offshore Fisheries
+
+
+---
+
+# Distant Water Fisheries (High Seas)
+
+
+---
+class: inverse, center, middle
+name: history
+
+# Brief History
+
+<html><div style='float:left'></div><hr color='#00BFFF' size=1px width=796px></html>
+
+---
+
+---
+class: inverse, center, middle
+name: management
+
+# Japanese Fisheries Management
+
+<html><div style='float:left'></div><hr color='#00BFFF' size=1px width=796px></html>
+
+---
+
+# Objectives
+
+---
+
+# Scheme
+
+---
+
+# Fishing rights
+
+---
+
+# Fisheries cooperatives
+
+
+--- 
+
+# Resource management?
+
+
+--- 
+
+# Japasense TAC
+
+
+---
+
+# Policy reform in 2018
+
+
+---
+class: inverse, center, middle
+name: cases
+
+# Case Studies
+
+<html><div style='float:left'></div><hr color='#00BFFF' size=1px width=796px></html>
+
+---
+
+# Coastal Fishery
+
+
+
+---
+
+# Glass Shrimp Fishery
+
+
+
+---
+
+# Offshore fishery
+
+
+
+---
+
+# Purse Seine fishery
+
+
+
+---
+class: inverse, center, middle
+name: comparison
+
+# Comparison of frameworks
+
+<html><div style='float:left'></div><hr color='#00BFFF' size=1px width=796px></html>
+
+---
+
+# Summary of Japanese Fisheries
+
+characteristics: natural/social conditions and hisotrical back ground.
+co-management
+
+---
+
+# Difference?
+
+Diff in schemes. 1genron - 2genron
+
+
+
+---
+
+# Outcome?
+
+
+
+---
+class: inverse, center, middle
+name: itq
+
+# ITQs for Japanese Fisheries
+
+<html><div style='float:left'></div><hr color='#00BFFF' size=1px width=796px></html>
+
+---
+
+
