@@ -68,7 +68,7 @@ fishers and fisheries has been declining.
 It is mainly because technological progress.
 
 
-```{r estat, echo = FALSE}
+```{r estat, include = FALSE}
 
 appID <- "11217753824fd6ecf1d5cc2880b613e3ee724fdb"
 ## estat_getStatsList(appId = appID, searchWord = "海面漁業生産統計調査")
@@ -110,7 +110,7 @@ name: fisheries
 
 # Nature conditions 
 
-```{r natural, echo = FALSE}
+```{r natural, include = FALSE}
 
  if(FALSE){
    # OECD dummy and location of the capital data (compiled by hand)
@@ -160,20 +160,21 @@ dat.fao1 = dat.fao_catch %>%
            # remove shannon = 0 
            filter(shannon != 0)
 
-           
+```
 
+```{r natural_plot, echo = FALSE}
+# Plot lat x diversity (2010-2017 average)
 ggplot(dat.fao1,aes(x = shannon,y = capital_lat)) + 
-  geom_point() +
-  # geom_smooth(method = "lm", se = FALSE) + 
-  geom_text(aes(label=`Country (Country)`),hjust=-0.1, vjust=0, size = 3) + 
-  gghighlight(label_key = `Country (Country)`, 
-                  `Country (Country)` == "Norway" | `Country (Country)` == "Japan") +
+  geom_point(size = 2) +
+  geom_smooth(method = "lm", se = FALSE) + 
+  geom_text(aes(label=`Country (Country)`),hjust=-0.1, vjust=0, size = 5) + 
+  gghighlight(`Country (Country)` == "Norway" | `Country (Country)` == "Japan") +
 theme_bw() + 
-  labs(x = "Diversity index of catch, 2010-2017 Mean",
+  labs(x = "Diversity Index of Fisheries Catch, 2010-2017 Mean",
        y = "Latitude of capital city")
-  
 
 ```
+
 
 
 ---
@@ -181,7 +182,8 @@ theme_bw() +
 # Social conditions
 
 
-```{r socialcondition,echo = FALSE}
+```{r socialcondition,include = FALSE}
+# total catch
 dat.fao_catch_rank = dat.fao_catch %>%
                      group_by(`Country (Country)`,year) %>%
                        summarise(catch = sum(catch,na.rm = TRUE)) %>%
@@ -190,26 +192,149 @@ dat.fao_catch_rank = dat.fao_catch %>%
                      mutate(catch_rank = min_rank(desc(catch)),
                             rank40_d = ifelse(catch_rank <= 40,1,0))
 
-dat.oecd2 = read_csv("./data/oecd.csv") %>%
+dat.oecd2 = dat.oecd %>%
            left_join(dat.fao_catch_rank,by = c("Country" = "Country (Country)"))
 
+# data for protein source dependency 
 dat.fao2 = read_csv("./data/FAOSTAT_food_balanc_sheet.csv") %>%
            dplyr::select(-`Item Code`) %>%
            tidyr::spread(key = "Item",value = "Value") %>%
-           left_join(dat.oecd %>% dplyr::select(Country,OECD, rank40_d), by = "Country") %>%
+           left_join(dat.oecd2 %>% dplyr::select(Country,OECD,capital_lat, rank40_d), by = "Country") %>%
            # top 40 catching country + OECD
            filter(OECD == 1 | rank40_d == 1) %>%
-           # for now, pick 2013. Can be changed among 2009-2013.
-           filter(Year == 2013) %>%
            mutate(fish_rate = `Fish, Seafood`/`Animal Products`*100)
 
 ```
 
+```{r social2, echo = FALSE}
+
+# Plot lat x diversity (2010-2017 average)
+ggplot(dat.fao2 %>% filter(Year == 2013), 
+       aes(x = fish_rate,y = capital_lat)) + 
+  geom_point(size = 2) +
+  geom_smooth(method = "lm", se = FALSE) + 
+  geom_text(aes(label=Country),hjust=-0.1, vjust=0, size = 5) + 
+  gghighlight(Country == "Norway" | Country == "Japan") +
+theme_bw() + 
+  labs(x = "Percentage of Seafood in animal protein source",
+       y = "Latitude of capital city",
+       title = "Latitude and Seafood as protein source (2013)",
+       subtitle = "Source: FAO Food Balance Sheet (2017)")
+
+```
+---
+
+# Diversified target species
+
+```{r diversified, include = FALSE}
+  dat.fao_catch2 = dat.fao_catch %>%
+                   rename(Country = `Country (Country)`,
+                          Species = `Species (ASFIS species)`) %>%
+                   filter(Country == "Norway" | Country == "Japan") %>%
+                   # aggregate by species, not catch area
+                   group_by(Country,year,Species) %>%
+                     summarise(catch = sum(catch,na.rm = TRUE)) %>%
+                   ungroup() %>%
+                   arrange(Country,year,desc(catch),Species) %>% 
+                   group_by(Country,year) %>%
+                     mutate(catch_share = catch/sum(catch,na.rm = TRUE),
+                            catch_share = ifelse(Species == "Marine fishes nei",0,catch_share)) %>%
+                     arrange(Country,year,desc(catch_share),Species) %>%
+                     mutate(rank = min_rank(desc(catch)),
+                            cum_catch_share = cumsum(catch_share)) %>%
+                   ungroup()
+```
+
+
+```{r diversified_plot,echo = FALSE}
+ggplot(dat.fao_catch2 %>% filter(year == 2017 & cum_catch_share < 0.9), aes(x=Country, y=catch_share, fill=reorder(Species,catch_share),label = reorder(Species,catch_share))) + 
+    geom_bar(stat="identity", width = 0.7) + 
+    geom_text(position=position_stack(vjust=0.5)) + 
+    labs(x = "Country",
+         title = "Composition of top 90% of fish catch, 2017",
+         subtitle = "Source: FAO FishStatJ,2019") + 
+    scale_x_discrete(breaks = c("Japan","Norway"),
+                     labels = c("Japan, 38 species","Norway, 9 species")) +
+    theme_bw() + 
+    theme(legend.position = "none")
+    
+
+## View(dat.fao_catch2 %>% filter(year == 2017 & cum_catch_share < 0.9))
+
+```
+
+---
+
+# Number of Fishing Vessels and Fishers
+
+```{r fleet, include = FALSE}
+
+# https://stats.oecd.org/Index.aspx?DataSetCode=FISH_FLEET
+
+# Number of vessels: data from OECD
+dat.fleet1 = read_csv("./data/FISH_FLEET_18062019192141466.csv") %>%
+            dplyr::select(Country,Fleet,Year,Unit,Value)
+
+dat.fleet2 = dat.fleet1 %>%
+            filter(Fleet == "Total vessels") %>%
+            tidyr::spread(key = "Unit",value = "Value") %>%
+            filter(Country != "OECD - Total")
+
+# Number of fishers: data from OECD
+dat.fisher = read_csv("./data/FISH_EMPL_18062019192512020.csv") %>%
+             dplyr::select(Country,`Economic sector`,Gender,`Occupation rate`,Year,Unit,Value) %>%
+             filter(Gender == "Total by Gender" & `Occupation rate` == "Total by Occupation rate") %>%
+             tidyr::spread(key = "Economic sector",value = "Value") %>%
+             mutate(`Inland Waters Fishing` = ifelse(is.na(`Inland Waters Fishing`),0,`Inland Waters Fishing`),
+                    marine_fishing = `Fishing Sector` - `Inland Waters Fishing`) %>%
+             filter(Country != "OECD - Total")
+
+# merge two data
+dat.fisher_fleet = dat.fleet2 %>%
+                   left_join(dat.fisher %>% dplyr::select(Country,Year,marine_fishing), by = c("Country","Year"))
+
+```
+
+```{r fleet_plot,echo = FALSE}
+
+
+# Plot vessel x fisher (2017)
+ggplot(dat.fisher_fleet %>% filter(Year == 2013 & Country != "Indonesia"),aes(x = marine_fishing,y = Number)) + 
+  geom_point(size = 2) +
+  # geom_smooth(method = "lm", se = FALSE) + 
+  geom_text(aes(label=Country),hjust=-0.1, vjust=0, size = 5) + 
+  gghighlight(Country == "Norway" | Country == "Japan") +
+theme_bw() + 
+  scale_y_continuous(labels = function(x) format(x, scientific = FALSE)) +
+  labs(x = "Number of Occupation fishers (excl. Inland Fishing)",
+       y = "Number of Fishing Vessels",
+       title = "Fishers and Vessels, OECD Countries (2013)",
+       subtitle = "Source: OECD.Stat (2018)")
+
+
+```
+
+```{r fleet_compo, include = FALSE}
+
+dat.fleet3 = dat.fleet1 %>%
+             filter(Country == "Norway" | Country == "Japan")
+
+```
 
 ---
 
 # How to characterize Japanese fisheries?
 
+* Natural condition:
+    + Islands extend to North-South, from subarctic to tropical area
+    + -> High Biodiversity -> Target fish species are also diversified. 
+
+* High dependency on seafood as protein source
+    + As a result of food culture and geographic condition
+    + Norway too, but Japan's dependency is higher.
+    
+* Many vessels, many fishers
+    + -> Many small scale fishers
 
 
 ---
@@ -218,28 +343,59 @@ name: category
 
 # Key categolization
 
-
-
+<html><div style='float:left'></div><hr color='#00BFFF' size=1px width=796px></html>
 
 ---
 
-# Main categolization of Japanese fisheries
+# Main categolization
 
+* Coastal Fisheries
+
+* Offshore Fisheries
+
+* Distant Water (High Seas) Fisheries
+
+* (Inland Water Fisheries)
 
 ---
 
 # Coastal Fisheries
 
+* 1-2 days per operation along the coast
+* Managed by local organizations of fishers, mainly Fisheries Cooperative Associations (FCAs)
+* The business are mostly run by family members
+* Rights-based fisheries 
+
+
+```{r, echo = FALSE}
+knitr::include_graphics("IMG_1965.JPG")
+```
+
+???
+
+Defined by fishing method (gyo-hou). until 2010, the definition was based on the size of vessel (< 10GT). 
 
 ---
 
 # Offshore Fisheries
 
+* Industrialized fisheries that operate within Japanese Economic Exclusive Zones (EEZ)
+* The normal size of vessels is up to 100 GT
+* Moves across prefectural borders
+
+
+```{r, echo = FALSE}
+knitr::include_graphics("ships_marukita_17Yuki.jpg")
+```
+    
 
 ---
 
 # Distant Water Fisheries (High Seas)
 
+* Highly industrialized
+* Operating in high seas and the EEZs of other countries
+* Has been declining since the EEZs are introduced. 
 
 ---
 class: inverse, center, middle
@@ -250,6 +406,151 @@ name: history
 <html><div style='float:left'></div><hr color='#00BFFF' size=1px width=796px></html>
 
 ---
+
+# Very brief Japanese Hisotry
+
+* Before 1192: The Aristocratic regeme (Heian)
+* 1192-1602: Samurai (Warrior class) Dynasties
+    + Unstable and conflicts
+    + Some dynasties followed by Warring States period
+* 1603-1868: Edo Era by Tokugawa Dynasty. 
+    + A stable feudal era 
+* 1868: Meiji Era, Modernization period
+    + Industrialization under the restoration of imperial rule 
+* 1945: After World War 2
+    + Dramatic institutional change
+    
+---
+
+# Up to the Edo Era
+
+* People on the Japanese Archipelago was fishing and shellfish-gathering at latest by 10,000BC-300BC
+* Taiho code in 701AD: First legal provision about fisheries
+    + Resources in the mountains, rivers, and coastal areas were open to all
+    + Not subject to taxation
+    + Contrast to agricultural land...
+    
+* After Heian Era, Samurai dynasties strengthen the rights of feudal landloads.
+    + But the fisheries management still followed the Taiho code.
+
+
+???
+(Makino 2011, pp22)
+* more than 2500 Shell mounds found along the Japanese coast. 
+* First legal provision relating to fisheries is found in the compilation of Taiho Code from 701AD 
+* scrubland: low tree area
+* bog: mud-carbon area 
+* For Agricultural land, specific users were identified and levies were imposed by the central government. 
+
+---
+
+# Edo Era, A stable feudal era
+
+* Stable political system
+* Each village as a formal administrative unit
+    + The head of each village acted as a government official
+    + In charge of collecting rice-based taxes, and applied levies
+
+--
+
+* Increased population => Demand for seafood
+    + Development of coastal fisheries
+    + Conflicts among villages over fishing ground
+
+--
+
+* => *A new set of regultions in 1743*
+    + Coastal fishing grounds: Only by the local fishing commnities
+    + Offshore fishing grounds: Open for free access by any fishers
+
+
+
+???
+
+* Feudalism: Social system. Daimyos, feudal lord, held lands from the Shogun in exchange for military service, and vassals were in turn tenants of the nobles, while the peasants (villeins or serfs) were obliged to live on their lord's land and give him homage, labour, and a share of the produce, notionally in exchange for military protection.
+
+* Levies: such as forced-labor
+
+* Coastal fishing ground were regarded as extension of the land and thus a part of the feudal domain. The feudal lords partitioned the coastal waters and allocated them to local communities under tha control of the village heads.
+
+---
+
+# Edo Era, A stable feudal era
+
+* In the middle of the Edo Era, technological progress and population increase enabled the development of capitalized, labor-intensive fisheries. 
+
+(figure)
+
+-- 
+* Upper fishers who owns such fishing gears dominates the local fishing operations
+    + Local guilds are organized to operate fisheries
+    + Groups by area, and fishing types, including offshore fisheries
+    + Established rules about seasons, methods, fishing grounds
+    + The regimes were protected by feudal lords in exchange for contributions
+    + Worked as formal institutions
+
+---
+
+# Digression: History of Sushi
+
+* Originates in a Southeast Asian dish
+    + Stored food. Fermented rice prevents the fish from spoiling. 
+    + Known as _Narezushi_ in Japan around 750 A.C.
+* _Edomae_ Sushi 
+    + In late Edo Era (1800's), some food stands started current style sushi
+    + Used fresh fish in Edo Bay, _Edomae_ means "in front of (_mae_)" Edo. So, only available in Edo (Tokyo)
+* Spread nationwide
+    + In Meiji Era, the development of ice making technology and fridge enabled more fresh sushi
+    + After Earthquake in East Japan (1923), Tokyo was devastated, and many sushi chefs left Tokyo and current style of sushi spread out Japan.  
+
+```{r, echo = FALSE}
+knitr::include_graphics("sushi.jpg")
+```
+    
+---
+
+# Meiji Revolution and Fisheries Law
+
+* The new government carried outa radical modernization of the national institutional framework
+* For fisheries management, it nationalized Japan's seas and introduced centralized license system to access seas
+    + Top-down management via limited entry (license with fee)
+
+--
+
+* Many people, who were NOT fishers, applied for licenses
+    + Fisheries landing tripled in 7 years after the change
+        + Edo fisheries management worked well to controll the fishing pressure
+    + Many new entrances imply that there were positive profit/rent in the fishries under Edo Era scheme
+
+--
+
+* The rise in landing was temporary, and the catch dropped soon
+    + Many fishers, low catch -> conflicts
+    + Fishermen's Union Regulation in 1886
+        + Original form of FCAs
+    + Back to local management, with formal recognition
+    
+* Meiji Fisheries Law in 1901
+    + Fishing rights and licenses into statutory form
+    + Rights limited to fishing methods and species
+    + Transfering fishing rights were allowed
+
+* 
+    
+
+
+---
+
+# Fisheries Reform after WWII
+
+
+
+---
+
+# Summary of History
+
+* The principle of Japanese fisheries management
+    + 
 
 ---
 class: inverse, center, middle
@@ -263,33 +564,184 @@ name: management
 
 # Objectives
 
+* The fundamental law, Fisheries Act, was enacted in 1949
+* The Article 1 of Fisheires Law states..
+    + Establish basic system (institution)
+    + Promote systematic utilize of water by fisheries adjustment organization
+    + Enhance fisheries productivity
+    + Democratize the fishing industry
+    
+--
+
+* Systematic utilize? (holistic utilization)
+    + Three dimensional, multiple utilization of water
+    + Interaction among fisheries
+    + -> Subdivided fishing area is not appropriate
+    + Rights and Licenses with limited species, methods, and grounds
+        + Operating diverse fisheries in a marine area
+    + Coodination of operations within a certain area from a overall point of view
+
+
+???
+
+Diversified target species, fishing method 
+
 ---
 
-# Scheme
+# Fishing Rights and Licenses
+
+* Fishing rights: Rights to conduct fishery operation exclusively in specified area by specified method
+    + They do not allow to privatize the sea surface
+    + Cannot be sold, leased, and transferred
+    + Mainly for coastal fisheries
+    
+--
+
+* Fishing licenses: Some fisheries are generally prohibited, licenses lift the prohibition in a specific case.
+    + Mainly for offshore and distant water fisheries
+    + Prefectural governor-licensed and Minister-licensed
 
 ---
 
-# Fishing rights
+# Fisheries Coordination
+
+* "Fisheries adjustment organization" or coordinating organization
+--
+* Nested system
+    + From national, prefectural to local level organizations 
+    + Various coordinations are made
+        - Evaluate the eligibility of rights holders
+        - Advice governors to establish fishing area plan (how to set rights)
+        - Make limitations and prohibitions of operations if necessary
+--
+* Local level: FCAs and Fisheries Management Organizations
+    + FCAs are main subjects to hold fishing rights
+    + Also the local level coodinating orgnization among fishers
+    + FMO is an autonomous and specialized group within FCAs.
+        - Make rules for FCAs, or even strictor self-regulations
 
 ---
+class: inverse, center, middle
+name: cases
 
-# Fisheries cooperatives
+# Resource Management
 
+<html><div style='float:left'></div><hr color='#00BFFF' size=1px width=796px></html>
 
+---
+# Resource Management-type Fisheries
+
+* Resource management-type fisheries (_Shigen Kanri Gata Gyogyo_)
+    + Local fishers, within FMOs or FCAs, implement resource management for themselves
+    + e.g. self-regulated no-take seasons/areas, limiting methods & gears
+    + Based on scientific knowledge supplied by local fisheries experiment stations
+    + Known as a form of **co-management**
+--
+
+* Advantages
+    + Flexibility based on local knowledge and information
+    + High compliance rate 
+    + Low enforcement cost
+--
+
+* Weakness
+    + Difficulty of coordination in wide-range/cross-jurisdictional issues and between fisheries
+    + Need every member's concensus -> drastic changes tend to be avoided
+    + Evidence of sustainability is weak. Main aim is to increase income.
+    
 --- 
 
-# Resource management?
+# Resource Recovery Plan
 
+* Resource Recovery Plan (RRP) system
+    + Strengthen the approach of Resource Management-type Fisheries
+    + with official support from the government
+--
+* New Measures
+    + Estabilshed new coordinating committee: Wide-Area Fisheries Coordinating Committees (WFCCs)
+    + Economic Support System compensates a part of the economic loss caused by drastic measures
+    + Total Allowable Effort (TAE): Set total operation days for fishery
+
+
+???
+
+WFCCs coodinate the fisheries that aims wide-distributing or migratory species. 
+
+ESS: To recover stock, innovative, drastic measures are required. e.g.  includes fishing ban. It may take several years. The local community economci conditions are worsened if the reosurce become depleted. They may not be able to adopt drastic measure even if they wish. 
+
+TAE: under the Law Regarding the Preservation and Management of Living Marine Resources.  Even some people decrease the fishing effort (e.g. suspend operations, cut their number of vessels), other fishers increases, then the management fail. To prevent, TAE is determined. 
+
+TAE is set for the entire fishery, so even if one FCAs or prefecture implement the managemnet, other prefectures cannot get advantgae by increasing it. 
 
 --- 
 
 # Japasense TAC
 
+* Introduced Total Alloable Catch (TAC) for (only) 8 species.
+* TAC
+    + Directly manages the catch of specified species with the upper limit of total catch
+    + Scientists (the Fisheries Research Agency) make recommnedation on the total catch (called Allowable Biological Catch, ABC)
+    + The management body determines the level of TAC based on the ABC
+    + Normally, ABC > TAC
+  
+* Japanese TAC?
+    + TACs are determined through the discussion with representatives of fisheries organizations, then evaluated in the Fishery Policy Council, and then the Minister of Agricuture, Forestry and Fisheries decides the final TACs. 
+    + TACs are allocated to Minister- and Governor-managed fisheries, then area and fisheries. 
+    + This enables local FCAs and organizations to implement own rules.
+    
+        
+    
+???
+
+8 species: Paficic saury (Samma), Wallweye Pollock, Japanee jack mackerel (aji), Japanese sardine, Chub mackerel, spotted chub mackerel, Japanese common squit (Surumeika), Snow crab (Zuwai gani)
+
+---
+
+# Allocation of TAC: Walleye Pollock
+
+
+???
+
+Flexibility of rules depending on local conditions
+
+Examples of local rule: Limit daily catch per vessel (Kushiro), Individual quota (Hiroo), Pooling revenue (Muroran, Hidaka)
+---
+
+# Actual TAC and ABC
+
+```{r, echo = FALSE}
+knitr::include_graphics("TAC2.png")
+```
 
 ---
 
 # Policy reform in 2018
 
+* In December 2018, Fisheries Act was amended for the first time since 1949
+
+* Main points
+    + Deleted "by fisheries adjustment organization"
+    + Sustainable utilization
+    + MSY-based manaegment
+    + Individual Quota
+    + Defined the responsibility of prefectural governments as managers 
+    
+* Shift from co-management to top-down?
+    + But still current management scheme for coastal fisheries are kept
+    + No details are determined yet..
+    
+
+???
+
+http://www.sangiin.go.jp/japanese/joho1/kousei/gian/197/pdf/s0801970081970.pdf
+
+From the Article 1, "by fisheries adjustment organizartion" is not mentioned anymore. 
+
++ It adds "make sure of sustainable utilization"
+
++ To keep and realize MSY level stock. (Article 12)
+
++ 
 
 ---
 class: inverse, center, middle
@@ -362,4 +814,19 @@ name: itq
 
 ---
 
+# ITQs for Japanese Fisheries
+
+
+??? 
+
+Makino 2013, pp146
+
+
+
+---
+
+# Small scales fishing communities along the coast
+
+
+---
 
