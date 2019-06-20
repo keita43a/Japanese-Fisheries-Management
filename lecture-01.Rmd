@@ -751,28 +751,28 @@ name: cases
 
 <html><div style='float:left'></div><hr color='#00BFFF' size=1px width=796px></html>
 
----
-
-# Coastal Fishery
-
-
 
 ---
 
 # Glass Shrimp Fishery
 
+* Glass Shrimp in Toyama, a.k.a. "Jewel of Toyama Bay"
+    + Uniquely caught only in Toyama
+* In 1985, large reduction of catch occured
+    + It took more than 10 years to recover
+--
+* Started autonomous resource management in 2003
+    + Data Collection: CPUE and individual size
+    + Self-regulation: Coordinated fishing halt and no-take period
+
+???
+
+Determined the base year of the resource status with CPUE and size, then set the criteria to stop operations.
 
 
----
-
-# Offshore fishery
-
-
-
----
-
-# Purse Seine fishery
-
+```{r, echo = FALSE}
+knitr::include_graphics("shiroebi.png")
+```
 
 
 ---
