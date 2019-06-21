@@ -114,7 +114,7 @@ dat.species= estat_getStatsData(
 ```
 
 
-```{r, echo = FALSE,out.width='100%'}
+```{r, echo = FALSE,out.width='90%'}
 knitr::include_graphics("catch.jpg")
 ```
 
@@ -201,7 +201,7 @@ theme_bw() +
 
 # Nature condition
 
-```{r, echo = FALSE,out.width='120%'}
+```{r, echo = FALSE,out.width='100%'}
 knitr::include_graphics("danryu.png")
 ```
     
@@ -322,8 +322,6 @@ dat.fisher = read_csv("./data/FISH_EMPL_18062019192512020.csv") %>%
 # merge two data
 dat.fisher_fleet = dat.fleet2 %>%
                    left_join(dat.fisher %>% dplyr::select(Country,Year,marine_fishing), by = c("Country","Year"))
-
-
 
 
 ```
