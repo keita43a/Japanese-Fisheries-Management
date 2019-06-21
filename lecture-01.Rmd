@@ -1,6 +1,6 @@
 ---
 title: 'Fisheries Management: Japan and Norway'
-subtitle: "<html><div style='float:left'></div><hr color='#00BFFF' size=1px width=796px></html>"
+subtitle: "<html><div style='float:left'></div><hr color='#00BFFF' size=1px width=900px></html>"
 author: "Keita Abe"
 date: "21/6/2019"
 output: 
@@ -11,6 +11,7 @@ output:
         highlightStyle: github
         highlightLines: true
         countIncrementalSlides: false
+        ratio: "16:9"
 ---
 
 
