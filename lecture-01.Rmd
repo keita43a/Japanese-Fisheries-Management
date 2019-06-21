@@ -115,7 +115,7 @@ dat.species= estat_getStatsData(
 
 
 ```{r, echo = FALSE,out.width='100%'}
-knitr::include_graphics("catch.JPG")
+knitr::include_graphics("catch.jpg")
 ```
 
 ???
